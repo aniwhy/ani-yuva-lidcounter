@@ -1,0 +1,9 @@
+# Ignore the virtual environment
+venv/
+.env
+
+# Ignore the AI model (optional - usually better to let the code download it)
+*.pt
+
+# Ignore the training images (if there are too many)
+lid_images/
