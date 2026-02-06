@@ -1,6 +1,8 @@
+import streamlit as st
 import cv2
 from ultralytics import YOLO
 import os
+import numpy as np
 
 # researched online for this specific library 
 # to run the yolov8 model in python
@@ -18,13 +20,35 @@ model = YOLO('yolov8n.pt')
 if not os.path.exists('lid_images'):
     os.makedirs('lid_images')
 
+# set up the professional dashboard layout
+# wide mode makes it easier to see on a factory tablet
+st.set_page_config(page_title="All-Clad Inventory", layout="wide")
+st.title("📊 All-Clad: Lid Counter Prototype")
+
+# columns to separate the camera from the data/buttons
+col1, col2 = st.columns([3, 1])
+
+with col2:
+    st.header("Inventory Metrics")
+    # big number for clear visibility from a distance
+    count_placeholder = st.empty()
+    st.write("---")
+    # quick memo: streamlit buttons for interaction
+    save_btn = st.button("📸 Save Image for Training")
+    st.info("System Status: Monitoring Tote")
+
+with col1:
+    # placeholder to push frames to the web page
+    image_placeholder = st.empty()
+
 # droidcam url to connect via wifi
 # format for any droidcam port: http://[your IP address goes here]:4747/video
 droidcam_url = "http://192.168.0.37:4747/video"
 capture = cv2.VideoCapture(droidcam_url)
 
 # counter to give each saved image a unique name
-img_counter = 0
+if 'img_counter' not in st.session_state:
+    st.session_state.img_counter = 0
 
 while True:
     # quick memo: 
@@ -34,7 +58,7 @@ while True:
     
     # if camera fails (ret is false), stop the code
     if not ret:
-        print("Camera input invalid. Restart DroidCam!!")
+        st.error("Camera input invalid. Restart DroidCam!!")
         break
 
     # variables to define the bucket area (roi)
@@ -57,6 +81,15 @@ while True:
     ball_boxes = [box for box in results[0].boxes if int(box.cls) == 32]
     count = len(ball_boxes)
 
+    # quick memo: press 's' or click button to save a photo
+    # this fulfills the note about getting images from multiple angles
+    if save_btn:
+        img_name = f"lid_images/test_shot_{st.session_state.img_counter}.png"
+        cv2.imwrite(img_name, frame)
+        st.toast(f"Saved: {img_name}")
+        st.session_state.img_counter += 1
+        save_btn = False # resets button state
+
     # draw the blue boundary for the bucket zone
     cv2.rectangle(frame, (bx1, by1), (bx2, by2), (255, 0, 0), 2)
     
@@ -66,32 +99,12 @@ while True:
         # offset coordinates back to main frame so boxes line up
         cv2.rectangle(frame, (x1 + bx1, y1 + by1), (x2 + bx1, y2 + by1), (0, 255, 0), 2)
 
-    # display the count of the objects on screen
-    # added a small instruction line for the user
-    cv2.rectangle(frame, (0, 0), (450, 80), (0, 0, 0), -1)
-    cv2.putText(frame, f"BALLS IN BUCKET: {count}", (10, 30), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-    cv2.putText(frame, "S: Save Image | Q: Quit", (10, 65), 
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-
-    # show the final output window
-    cv2.imshow("ball detection in bucket, problem 1 prototype 1", frame)
-
-    # handle key presses
-    key = cv2.waitKey(1)
+    # convert BGR to RGB so colors look right in the browser
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     
-    # quick memo: press 's' to save a photo
-    # this fulfills the note about getting images from multiple angles
-    if key & 0xFF == ord('s'):
-        img_name = f"lid_images/test_shot_{img_counter}.png"
-        cv2.imwrite(img_name, frame)
-        print(f"Saved: {img_name}")
-        img_counter += 1
+    # update the web elements live
+    image_placeholder.image(frame_rgb, channels="RGB")
+    count_placeholder.metric("BALLS IN BUCKET", count)
 
-    # press 'q' to quit the window
-    elif key & 0xFF == ord('q'):
-        break
-
-# release camera and close windows to clean up memory
+# release camera when done
 capture.release()
-cv2.destroyAllWindows()
